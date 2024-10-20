@@ -14,7 +14,9 @@
         "pusher/pusher-php-server": "^5.0",
         "predis/predis": "^1.1",
         "monolog/monolog": "^2.0",
-        "laravel/ui": "^3.2"
+        "laravel/ui": "^3.2",
+        "nesbot/carbon": "^2.0"
+
     },
     "require-dev": {
         "brianium/paratest": "^6.11",

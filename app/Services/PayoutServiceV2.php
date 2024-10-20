@@ -2,242 +2,139 @@
 
 namespace App\Services;
 
-use App\Models\Seller;
-use App\Repositories\PayoutRepository;
-use App\Repositories\TransactionRepository;
-use App\Repositories\ItemPayoutRepository;
-use Illuminate\Support\Collection;
+
 use App\Exceptions\PayoutException;
+use App\Models\Item;
+use App\Models\Payout;
+use App\Models\Transaction;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+
 
 class PayoutServiceV2
 {
-    protected $payoutRepository;
-    protected $transactionRepository;
-    protected $itemPayoutRepository;
 
-    public function __construct(
-        PayoutRepository $payoutRepository,
-        TransactionRepository $transactionRepository,
-        ItemPayoutRepository $itemPayoutRepository
-    ) {
-        $this->payoutRepository = $payoutRepository;
-        $this->transactionRepository = $transactionRepository;
-        $this->itemPayoutRepository = $itemPayoutRepository;
+    /**
+     * @throws PayoutException
+     */
+    public function process(Collection $items)
+    {
+        $payouts = [];
+
+        DB::transaction(function() use (&$payouts, $items){
+            $payouts = $this->splitPayouts($this->createPayouts($this->validateItems($items)));
+        });
+
+        return $payouts;
     }
 
-    public function processPayouts(Collection $data)
+
+    protected function createPayouts($db_items): Collection
     {
-        $sellerReferences = $data->pluck('seller_reference')->unique();
-        $channelItemCodes = $data->pluck('channel_item_code')->unique();
+        $db_items = $db_items->map(function(Item $item){
 
-        // Eager load sellers and their associated items based on item codes
-        $sellersWithItems = Seller::with(['items' => function ($query) use ($channelItemCodes) {
-            $query->whereIn('channel_item_code', $channelItemCodes);
-        }])
-            ->whereIn('id', $sellerReferences)
-            ->get()
-            ->keyBy('id');
+            $original_amount = $item->quantity * $item->price_amount;
+            $converted_amount = $this->convertCurrency($item->quantity * $item->price_amount, $item->price_currency, $item->seller->base_currency);
 
-        $responses = collect();
+            return [
+                'item_id' => $item->id,
+                'seller_id' => $item->seller_id,
+                'channel_item_code' => $item->channel_item_code,
+                'seller_reference' => $item->seller_id,
+                'base_currency' => $item->seller->base_currency,
+                'item_currency' => $item->price_currency,
+                'qty' => $item->quantity,
+                'original_amount' => $original_amount,
+                'converted_amount' => $converted_amount
+            ];
+        })->groupBy(['seller_id', 'item_currency', 'base_currency']);
 
-        foreach ($data as $entry) {
-            $channelItemCode = $entry['channel_item_code'];
-            $sellerReference = $entry['seller_reference'];
+//        return $db_items;
 
-            // Fetch the seller
-            $seller = $sellersWithItems->get($sellerReference);
 
-            if (!$seller) {
-                throw new PayoutException("Seller with reference {$sellerReference} not found.");
-            }
+        $payouts = [];
 
-            // Validate item existence in seller's items
-            $item = $seller->items->firstWhere('channel_item_code', $channelItemCode);
-            if (!$item) {
-                throw new PayoutException("Item with channel_item_code {$channelItemCode} does not belong to Seller with reference {$sellerReference}.");
-            }
-        }
+        foreach ($db_items as $seller_id => $from_currencies){
 
-        // Process valid seller with item(s)
-        $responses = $this->processPayoutItems($sellersWithItems);
+            foreach ($from_currencies as $from_currency => $to_currencies){
 
-        return $responses;
-    }
+                foreach ($to_currencies as $to_currency => $items){
 
-    private function processPayoutItems(Collection $sellersWithItems): array
-    {
-        $responses = [];
+                    $payout = new Payout();
+                    $payout->seller_id = $seller_id;
+                    $payout->original_amount = collect($items)->sum('original_amount');
+                    $payout->converted_amount = collect($items)->sum('converted_amount');
+                    $payout->original_currency = $from_currency;
+                    $payout->converted_currency = $to_currency;
+                    $payout->save();
 
-        foreach ($sellersWithItems as $seller) {
-            $duplicatedItems = collect(); // Temporary collection for duplicated items
+                    $payout->items()->sync($items->pluck('item_id'));
 
-            foreach ($seller->items as $item) {
-                $quantity = $item->quantity;
+                    $payouts[] = $payout;
 
-                
-                // Duplicate the item based on its quantity
-                for ($i = 0; $i < $quantity; $i++) {
-                    $item->quantity = 1; // Default to 1 if quantity is null or missing
-                    $replicatedItem = $item->replicate();
-                    $replicatedItem->id = $item->id;
-                    
-                    $duplicatedItems->push($replicatedItem);// Replicate the item for each quantity
-                }
-            }
-            
-            
-            // Replace the seller's items collection with the duplicated items
-            $seller->setRelation('items', $duplicatedItems);
-
-            $payoutCurrencyBatches = $this->calculatePayoutSplits($seller, $seller->items);
-
-            foreach ($payoutCurrencyBatches as $currency => $payoutBatches) {
-                $countryPayoutLabel = $this->getCountryFromCurrency($currency) . " Payouts";
-                $responses[$seller->name][$countryPayoutLabel] = $this->createPayoutEntry($seller->id, $payoutBatches, $currency);
-            }
-        }
-        return $responses;
-    }
-
-    private function calculatePayoutSplits($seller, Collection $items): array
-    {
-    
-        // Group items by currency
-        $groupedItemsByCurrency = $items->groupBy('price_currency');
-        $payoutBatchesForCurrency = [];
-        
-        foreach ($groupedItemsByCurrency as $currency => $itemsByCurrency) {
-            $payoutBatches = [];
-            $totalAmountInOriginalCurrency = 0;
-            $totalAmountConvertedCurrency = 0;
-
-            // Convert the remaining amount to the seller's base currency
-            $remainingAmount = $itemsByCurrency->sum('price_amount');
-            $remainingAmountConvertedCurrency = $this->convertCurrency($remainingAmount, $currency, $seller->base_currency);
-
-            // Convert the payout limit to the seller's base currency
-            $payoutLimit = getPayoutLimit();
-        
-            // Process each batch
-            while ($remainingAmountConvertedCurrency > 0 && $itemsByCurrency->isNotEmpty()) {
-                $batchItems = [];
-                $batchAmountConvertedCurrency = 0;
-                $batchAmountInOriginalCurrency = 0;
-                
-                foreach ($itemsByCurrency as $key => $item) {
-                    $convertedPriceAmount = $this->convertCurrency($item['price_amount'], $currency, $seller->base_currency);
-
-                     // Handle base case: If the converted item price is greater than or equal to payout limit
-                    if ($convertedPriceAmount >= $payoutLimit && $batchAmountConvertedCurrency == 0) {
-                        // Throw an error and stop further processing if the item price itself exceeds the limit
-                        throw new PayoutException("Item with ID {$item->id} has a price of {$item['price_amount']} {$currency} (converted to {$convertedPriceAmount} {$seller->base_currency}), which exceeds the payout limit of {$payoutLimit} {$seller->base_currency}. Please contact support.");
-                    }
-            
-                    // Check if adding the item would exceed the payout limit
-                    if ($batchAmountConvertedCurrency + $convertedPriceAmount <= $payoutLimit) {
-                        
-                        $itemCode = $item->channel_item_code;
-
-                        // Check if the item with the same channel_item_code already exists in $batchItems
-                        if (isset($batchItems[$itemCode])) {
-                            // If the item exists, increase its quantity
-                            $batchItems[$itemCode]['Item Quantity'] += $item->quantity;
-                            $batchItems[$itemCode]['Item Amount'] += (double)$item->price_amount;
-                        } else {
-                            
-                            // If the item doesn't exist, add it to the batchItems
-                            $batchItems[$itemCode] = [
-                                'Item ID' => $item->id,
-                                'Item Channel Code' => $itemCode,
-                                'Item Name' => $item->name,
-                                'Item Amount' => (double)$item->price_amount,
-                                'Item Unit Amount' => (double)$item->price_amount,
-                                'Item Currency' => $item->price_currency,
-                                'Item Code' => $item->channel_item_code,
-                                'Item Quantity' => $item->quantity, // Set initial quantity
-                            ];
-                        }
-                        
-                        // Add the converted price amount to the batch amount
-                        $batchAmountConvertedCurrency += $convertedPriceAmount;
-                        $batchAmountInOriginalCurrency += $item->price_amount;
-        
-                        // Remove processed item from the original collection
-                        $itemsByCurrency->forget($key);
-                    }
                 }
 
-                $totalAmountInOriginalCurrency += $batchAmountInOriginalCurrency;
-                $totalAmountConvertedCurrency += $batchAmountConvertedCurrency;
-        
-                // Add the processed batch to the payoutBatches array
-                $payoutBatches[] = [
-                    'batch_amount_in_original_currency' => $batchAmountInOriginalCurrency,
-                    'batch_amount_in_base_currency' => $batchAmountConvertedCurrency,
-                    'items' => $batchItems,
-                    'currency' => $seller->base_currency, // Use seller's base currency for payouts
-                ];
-        
-                // Deduct the processed batch amount from the remaining amount
-                $remainingAmountConvertedCurrency -= $batchAmountConvertedCurrency;
             }
-            $payoutBatchesForCurrency[$currency]['batch'] = $payoutBatches;
-            $payoutBatchesForCurrency[$currency]['total_amount_of_batch'] = $totalAmountInOriginalCurrency;
-            $payoutBatchesForCurrency[$currency]['total_amount_in_base_currency'] = $totalAmountConvertedCurrency;
+
         }
 
-        return $payoutBatchesForCurrency;
+        return collect($payouts)->pluck('id');
     }
 
-    public function createPayoutEntry(int $sellerId, $payoutBatches, string $currency)
+    protected function splitPayouts(Collection $payout_ids)
     {
-        try {
-            DB::beginTransaction();
+        $payout_limit = config('app.payout_limit');
 
-            // Step 1: Create consolidated payout
-            $consolidatedPayout = $this->payoutRepository->createPayout([
-                'seller_id' => $sellerId,
-                'original_amount' => $payoutBatches['total_amount_of_batch'],
-                'converted_amount' => $payoutBatches['total_amount_in_base_currency'],
-                'original_currency' => $currency,
-                'converted_currency' => $payoutBatches['batch'][0]['currency'],
-            ]);
-            $transactionCollection = collect();
+        $payouts = Payout::query()->find($payout_ids);
 
-            $response = collect();
-            
-            foreach ($payoutBatches['batch'] as $batch) {
+        $payouts->each(function(Payout $payout) use ($payout_limit){
 
-                $transactionCollection->push([
-                    'batch_amount_in_original_currency' => $batch['batch_amount_in_original_currency'],
-                    'batch_amount_in_base_currency' => $batch['batch_amount_in_base_currency'],
-                ]);
-                
+            $amount = $payout->converted_amount;
 
-                $response->push([
-                    'payout_id' => $consolidatedPayout->id,
-                    'seller_reference' => $sellerId,
-                    'original_amount' => $batch['batch_amount_in_original_currency'],
-                    'converted_amount' => $batch['batch_amount_in_base_currency'],
-                    'original_currency' => $currency,
-                    'converted_currency' => $payoutBatches['batch'][0]['currency'],
-                    'items' => array_values($batch['items'])
-                ]);
+            while ($amount >= 0) {
+
+                if ($amount >= $payout_limit){
+                    $to_save = $payout_limit;
+                }else{
+                    $to_save = $amount;
+                }
+
+                $transaction = new Transaction();
+                $transaction->payout_id = $payout->id;
+                $transaction->batch_amount_in_original_currency = $to_save;
+                $transaction->batch_amount_in_base_currency = $to_save;
+                $transaction->save();
+
+                $amount = $amount - $payout_limit;
+
             }
 
-            $this->transactionRepository->createBatchTransactions($consolidatedPayout->id, $transactionCollection);
-            $this->itemPayoutRepository->saveMultipleItemPayouts($consolidatedPayout->id, $batch['items']);
+        });
 
-            DB::commit();
+        $payouts->loadMissing('transactions', 'items');
 
-            return $response;
+        return $payouts;
+    }
 
-        } catch (\Exception $e) {
-            DB::rollBack();
-            dd($e);
-            throw new PayoutException("Failed to create payout for Seller with ID {$sellerId}: " . $e->getMessage());
-        }
+    protected function validateItems(Collection $items): \Illuminate\Database\Eloquent\Collection
+    {
+        $db_items = Item::query()
+            ->with('seller')
+            ->where(function(Builder $query) use ($items) {
+                $items->each(function($item) use ($query){
+                    $query->orWhere(function(Builder $q)use ($item){
+                        $q->where('channel_item_code', $item['channel_item_code'])->where('seller_id', $item['seller_reference']);
+
+                    });
+                });
+            })->get();
+
+       if ($db_items->count() != $items->count()){
+           throw new PayoutException("Item or Seller not found in database.");
+       }
+
+        return $db_items;
     }
 
     public function convertCurrency(float $amount, string $fromCurrency, string $toCurrency): float
@@ -256,14 +153,4 @@ class PayoutServiceV2
         return $amount * $exchangeRates[$fromCurrency][$toCurrency];
     }
 
-    public function getCountryFromCurrency(string $currency): string
-    {
-        $exchangeCountries = [
-            'USD' => "U.S.A",
-            'GBP' => "UK",
-            'EUR' => "Europe",
-            'AED' => "Middle East"
-        ];
-        return isset($exchangeCountries[$currency]) ? $exchangeCountries[$currency] : $currency;
-    }
 }
