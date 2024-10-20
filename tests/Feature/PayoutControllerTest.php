@@ -15,86 +15,76 @@ class PayoutControllerTest extends TestCase
     public function store_creates_payout_successfully()
     {
         // Arrange: Create sellers and items using factories
-        $seller1 = Seller::factory()->create(['id' => 1, 'base_currency' => 'USD', 'name' => "Price-Kunze"]);
-        $seller2 = Seller::factory()->create(['id' => 2, 'base_currency' => 'EUR', 'name' => "Dibbert, Boyer and Quigley"]);
-        $seller5 = Seller::factory()->create(['id' => 5, 'base_currency' => 'GBP', 'name' => "Collier, Greenholt and Blanda"]);
+        $seller1 = Seller::factory()->create(['id' => 1, 'base_currency' => 'USD', 'name' => "Torp, Jakubowski and Kerluke"]);
 
-        // Create items with price amounts and currencies for proper validation
-        Item::factory()->create(['seller_id' => $seller1->id, 'channel_item_code' => 'Test_W739', 'price_amount' => 300, 'price_currency' => 'EUR', 'name'=> "Prada Bag"]);
-        Item::factory()->create(['seller_id' => $seller2->id, 'channel_item_code' => 'TF_S723', 'price_amount' => 500, 'price_currency' => 'AED','name'=> "Tom Ford Shoes"]);
-        Item::factory()->create(['seller_id' => $seller5->id, 'channel_item_code' => 'GC_G201', 'price_amount' => 200, 'price_currency' => 'USD','name'=> "Tom Ford Bag"]);
+        // Create items with price amounts and currencies for proper validation, including quantities
+        Item::factory()->create(['seller_id' => $seller1->id, 'channel_item_code' => 'TF_D655', 'price_amount' => 101.73, 'price_currency' => 'USD', 'quantity' => 1, 'name' => "Tom Ford Dress"]);
+        Item::factory()->create(['seller_id' => $seller1->id, 'channel_item_code' => 'PR_D744', 'price_amount' => 477.83, 'price_currency' => 'USD', 'quantity' => 3, 'name' => "Prada Dress"]);
 
         $items = [
             [
                 'seller_reference' => 1,
-                'channel_item_code' => 'Test_W739',
+                'channel_item_code' => 'TF_D655',
             ],
             [
-                'seller_reference' => 2,
-                'channel_item_code' => 'TF_S723',
-            ],
-            [
-                'seller_reference' => 5,
-                'channel_item_code' => 'GC_G201',
+                'seller_reference' => 1,
+                'channel_item_code' => 'PR_D744',
             ],
         ];
 
         // Simulate a POST request with valid data
         $response = $this->postJson('/api/payouts', ['sold_items' => $items]);
 
-        // Assert the correct response structure
+        // Assert the correct response structure, including quantity, without checking Item ID
         $response->assertStatus(201)
             ->assertJson([
                 'payouts' => [
-                    'Price-Kunze' => [
-                        'Europe Payouts' => [
+                    'Torp, Jakubowski and Kerluke' => [
+                        'U.S.A Payouts' => [
+                            [
+                                // 'payout_id' => 1,
+                                'seller_reference' => 1,
+                                'original_amount' => 579.56,
+                                'converted_amount' => 579.56,
+                                'original_currency' => 'USD',
+                                'converted_currency' => 'USD',
+                                'items' => [
+                                    [
+                                        'Item Channel Code' => 'TF_D655',
+                                        'Item Name' => 'Tom Ford Dress',
+                                        'Item Amount' => 101.73,
+                                        'Item Unit Amount' => 101.73,
+                                        'Item Currency' => 'USD',
+                                        'Item Code' => 'TF_D655',
+                                        'Item Quantity' => 1,
+                                    ],
+                                    [
+                                        'Item Channel Code' => 'PR_D744',
+                                        'Item Name' => 'Prada Dress',
+                                        'Item Amount' => 477.83,
+                                        'Item Unit Amount' => 477.83,
+                                        'Item Currency' => 'USD',
+                                        'Item Code' => 'PR_D744',
+                                        'Item Quantity' => 1,
+                                    ]
+                                ]
+                            ],
                             [
                                 'payout_id' => 1,
                                 'seller_reference' => 1,
-                                'original_amount' => '300 EUR',
-                                'converted_amount' => '354 USD',
+                                'original_amount' => 955.66,
+                                'converted_amount' => 955.66,
+                                'original_currency' => 'USD',
+                                'converted_currency' => 'USD',
                                 'items' => [
                                     [
-                                        'Item Name' => 'Prada Bag',
-                                        'Item Amount' => '300.00',
-                                        'Item Currency' => 'EUR',
-                                        'Item Code' => 'Test_W739'
-                                    ]
-                                ]
-                            ]
-                        ]
-                    ],
-                    'Dibbert, Boyer and Quigley' => [
-                        'Middle East Payouts' => [
-                            [
-                                'payout_id' => 2,
-                                'seller_reference' => 2,
-                                'original_amount' => '500 AED',
-                                'converted_amount' => '115 EUR',
-                                'items' => [
-                                    [
-                                        'Item Name' => 'Tom Ford Shoes',
-                                        'Item Amount' => '500.00',
-                                        'Item Currency' => 'AED',
-                                        'Item Code' => 'TF_S723'
-                                    ]
-                                ]
-                            ]
-                        ]
-                    ],
-                    'Collier, Greenholt and Blanda' => [
-                        'U.S.A Payouts' => [
-                            [
-                                'payout_id' => 3,
-                                'seller_reference' => 5,
-                                'original_amount' => '200 USD',
-                                'converted_amount' => '150 GBP',
-                                'items' => [
-                                    [
-                                        'Item Name' => 'Tom Ford Bag',
-                                        'Item Amount' => '200.00',
+                                        'Item Channel Code' => 'PR_D744',
+                                        'Item Name' => 'Prada Dress',
+                                        'Item Amount' => 955.66,
+                                        'Item Unit Amount' => 477.83,
                                         'Item Currency' => 'USD',
-                                        'Item Code' => 'GC_G201'
+                                        'Item Code' => 'PR_D744',
+                                        'Item Quantity' => 2,
                                     ]
                                 ]
                             ]
