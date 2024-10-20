@@ -232,6 +232,6 @@ return [
         'Carbon' => Carbon\Carbon::class
     ],
 
-    'payout_limit' => 50,
+    'payout_limit' => 1000,
 
 ];

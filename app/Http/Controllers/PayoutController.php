@@ -10,7 +10,7 @@ class PayoutController extends Controller
 {
     protected $payoutService;
 
-    public function __construct(PayoutServiceV2 $payoutService)
+    public function __construct(PayoutService $payoutService)
     {
         $this->payoutService = $payoutService;
     }
@@ -18,8 +18,7 @@ class PayoutController extends Controller
     public function store(PayoutRequest $request)
     {
         // Collect request data (seller_reference and channel_item_code)
-        // $payouts = $this->payoutService->processPayouts(collect($request->sold_items));
-        $payouts = $this->payoutService->process(collect($request->sold_items));
+        $payouts = $this->payoutService->processPayouts(collect($request->sold_items));
 
         return response()->json(['payouts' => $payouts], 201);
     }

@@ -7,10 +7,10 @@ if (!function_exists('getPayoutLimit')) {
     
     function getPayoutLimit(): int
     {
-        return 1000;
-        //it would be from db in future
-        return Cache::remember('payout_limit', 300, function () {
-            return env('PAYOUT_LIMIT', 1000);
+        
+        //In Future, Payout Limit would be powered from DB
+        return Cache::remember('payout_limit', 30, function () { //For now cache is set for 30sec only
+            return config("app.payout_limit", 1000);
         });
     }
 }
