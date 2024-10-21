@@ -29,6 +29,6 @@ class CreateTransactionItemsTable extends Migration
 
     public function down()
     {
-        Schema::dropIfExists('item_payout');
+        Schema::dropIfExists('item_transaction');
     }
 }

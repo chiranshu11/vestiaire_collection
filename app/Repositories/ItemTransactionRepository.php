@@ -13,12 +13,12 @@ class ItemTransactionRepository
      */
     public function saveMultipleItemTransactions(Collection $transactions): void
     {
-        $itemPayoutData = [];
+        $itemTransactionData = [];
         foreach ($transactions as $transaction) {
             
             $transactionID = $transaction['transaction_id'];
             foreach ($transaction['transaction_items'] as $item) {
-                $itemPayoutData[] = [
+                $itemTransactionData[] = [
                     'item_id' => $item['Item ID'],
                     'transaction_id' => $transactionID,
                     'quantity' => $item['Item Quantity'],
@@ -27,8 +27,8 @@ class ItemTransactionRepository
                 ];
             }
         }
-        // Perform a bulk insert into the item_payout table
-        \DB::table('item_transaction')->insert($itemPayoutData);
+        // Perform a bulk insert into the item_transaction table
+        \DB::table('item_transaction')->insert($itemTransactionData);
     }
 
 }

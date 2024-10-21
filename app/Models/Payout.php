@@ -46,13 +46,14 @@ class Payout extends Model
          return \Carbon::parse($value)->format($this->dateFormat);
      }
 
-    // Many-to-Many relationship with Item using the pivot model ItemPayout
-    public function items()
-    {
-        return $this->belongsToMany(Item::class, 'item_payout', 'payout_id', 'item_id')
-                    ->using(ItemPayout::class)  // Use the custom pivot model
-                    ->withTimestamps(); // Include timestamps for pivot table
-    }
+    //  this one was done for earlier payout service, will need this in demo
+    //  Many-to-Many relationship with Item using the pivot model ItemPayout
+    // public function items()
+    // {
+    //     return $this->belongsToMany(Item::class, 'item_payout', 'payout_id', 'item_id')
+    //                 ->using(ItemPayout::class)  // Use the custom pivot model
+    //                 ->withTimestamps(); // Include timestamps for pivot table
+    // }
 
     /**
      * Define a relationship between Payout and Seller.

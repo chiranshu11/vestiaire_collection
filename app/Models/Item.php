@@ -17,13 +17,14 @@ class Item extends Model
         'seller_id'
     ];
 
+    // this one was done for earlier payout service, will need this in demo
     // Many-to-Many relationship with Payout using the pivot model ItemPayout
-    public function payouts()
-    {
-        return $this->belongsToMany(Payout::class, 'item_payout', 'item_id', 'payout_id')
-                    ->using(ItemPayout::class)  // Use the custom pivot model
-                    ->withTimestamps(); // Include timestamps for pivot table
-    }
+    // public function payouts()
+    // {
+    //     return $this->belongsToMany(Payout::class, 'item_payout', 'item_id', 'payout_id')
+    //                 ->using(ItemPayout::class)  // Use the custom pivot model
+    //                 ->withTimestamps(); // Include timestamps for pivot table
+    // }
 
     /**
      * Define a relationship between Item and Seller.
