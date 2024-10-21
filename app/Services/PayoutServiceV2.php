@@ -64,7 +64,7 @@ class PayoutServiceV2
                     $payout->converted_currency = $toCurrency;
                     $payout->save();
 
-                    $payout->items()->sync($items->pluck('item_id'));
+                    // $payout->items()->sync($items->pluck('item_id'));
 
                     $payouts[] = $payout;
                 }
@@ -105,7 +105,8 @@ class PayoutServiceV2
 
         });
 
-        $payouts->loadMissing('transactions', 'items');
+        // $payouts->loadMissing('transactions', 'items');
+        $payouts->loadMissing('transactions');
 
         return $payouts;
     }
