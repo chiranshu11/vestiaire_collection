@@ -3,24 +3,27 @@
 namespace Tests\Unit\Services;
 
 use Tests\TestCase;
-use App\Services\PayoutServiceV2;
+use App\Services\PayoutService;
 use App\Models\Seller;
 use App\Models\Item;
 use App\Repositories\PayoutRepository;
 use App\Repositories\TransactionRepository;
-use App\Repositories\ItemPayoutRepository;
+use App\Repositories\ItemTransactionRepository;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Foundation\Testing\DatabaseMigrations;
+
 use Illuminate\Support\Collection;
 use App\Exceptions\PayoutException;
 use Mockery;
 
 class PayoutServiceTest extends TestCase
 {
+    // use DatabaseMigrations;
     use RefreshDatabase;
 
     protected $payoutRepository;
     protected $transactionRepository;
-    protected $itemPayoutRepository;
+    protected $itemTransactionRepository;
     protected $payoutService;
 
     protected function setUp(): void
@@ -30,17 +33,18 @@ class PayoutServiceTest extends TestCase
         // Mock the repositories
         $this->payoutRepository = Mockery::mock(PayoutRepository::class);
         $this->transactionRepository = Mockery::mock(TransactionRepository::class);
-        $this->itemPayoutRepository = Mockery::mock(ItemPayoutRepository::class);
+        $this->itemTransactionRepository = Mockery::mock(ItemTransactionRepository::class);
 
         // Initialize PayoutService with mocked dependencies
-        $this->payoutService = new PayoutServiceV2(
+        $this->payoutService = new PayoutService(
             $this->payoutRepository,
             $this->transactionRepository,
-            $this->itemPayoutRepository
+            $this->itemTransactionRepository
         );
     }
 
  /** @test */
+/** @test */
 public function it_should_process_payouts_successfully()
 {
     // Arrange: Create sellers and items using factories
@@ -65,10 +69,16 @@ public function it_should_process_payouts_successfully()
         ->once()  // Ensures it is called once during the test
         ->andReturn(new \App\Models\Payout(['id' => 1]));  // Return a mock payout object
 
+    // Mock transaction creation and return a collection with transaction IDs and items
     $this->transactionRepository->shouldReceive('createBatchTransactions')
-        ->once();  // Ensures it is called once
+        ->once()
+        ->andReturn(collect([
+            ['transaction_id' => 43, 'transaction_items' => [21, 22]],
+            ['transaction_id' => 44, 'transaction_items' => [23]]
+        ]));
 
-    $this->itemPayoutRepository->shouldReceive('saveMultipleItemPayouts')
+    // Mock the item-transaction saving
+    $this->itemTransactionRepository->shouldReceive('saveMultipleItemTransactions')
         ->once();  // Ensures it is called once
 
     // Set a payout limit to simulate splitting logic
@@ -85,7 +95,6 @@ public function it_should_process_payouts_successfully()
     $this->assertArrayHasKey('Price-Kunze', $result);
     $this->assertArrayHasKey('U.S.A Payouts', $result['Price-Kunze']);
     
-
     // Assert that the number of items is based on the quantity (3 in this case)
     $this->assertCount(2, $result['Price-Kunze']['U.S.A Payouts']);
 
@@ -95,6 +104,7 @@ public function it_should_process_payouts_successfully()
     $this->assertEquals(1000.00, $result['Price-Kunze']['U.S.A Payouts'][0]['items'][0]['Item Amount']);
     $this->assertEquals(500.00, $result['Price-Kunze']['U.S.A Payouts'][1]['items'][0]['Item Amount']);
 }
+
 
 
 
@@ -197,13 +207,13 @@ public function it_should_process_payouts_successfully()
         $this->payoutService->convertCurrency($amount, $fromCurrency, $toCurrency);
     }
 
-    /** @test */
+
     public function it_should_process_payouts_for_multiple_sellers_with_different_currencies()
     {
         // Arrange: Create sellers with different base currencies and items with different currencies
         $seller1 = Seller::factory()->create(['base_currency' => 'USD', 'name' => 'Seller1']);
         $seller2 = Seller::factory()->create(['base_currency' => 'GBP', 'name' => 'Seller2']);
-
+    
         $item1 = Item::factory()->create([
             'seller_id' => $seller1->id,
             'price_amount' => 500,
@@ -211,7 +221,7 @@ public function it_should_process_payouts_successfully()
             'channel_item_code' => 'Test_W739',
             'quantity' => 1
         ]);
-
+    
         $item2 = Item::factory()->create([
             'seller_id' => $seller2->id,
             'price_amount' => 400,
@@ -219,45 +229,64 @@ public function it_should_process_payouts_successfully()
             'channel_item_code' => 'Test_G741',
             'quantity' => 1
         ]);
-
+    
         $data = collect([
             ['seller_reference' => $seller1->id, 'channel_item_code' => 'Test_W739'],
             ['seller_reference' => $seller2->id, 'channel_item_code' => 'Test_G741']
         ]);
-
+    
         // Mock repository methods
         $this->payoutRepository->shouldReceive('createPayout')->andReturn(new \App\Models\Payout(['id' => 1]));
-        $this->transactionRepository->shouldReceive('createBatchTransactions')->twice();
-        $this->itemPayoutRepository->shouldReceive('saveMultipleItemPayouts')->twice();
-
+    
+        // Mock transactions for different currencies
+        $this->transactionRepository->shouldReceive('createBatchTransactions')
+            ->twice() // Expect the method to be called twice for two different currencies
+            ->andReturnUsing(function ($payoutId, $transactionCollection) {
+                // Return a different transaction_id for each call
+                return collect([
+                    ['transaction_id' => 43, 'transaction_items' => [21]],
+                    ['transaction_id' => 44, 'transaction_items' => [22]]
+                ]);
+            });
+    
+        $this->itemTransactionRepository->shouldReceive('saveMultipleItemTransactions')
+            ->twice();  // Ensures it is called once per currency
+    
         // Set payout limit high enough to ensure no splitting
         $this->mockFunction('getPayoutLimit', 1000);
-
+    
         // Act: Call the method
         $result = $this->payoutService->processPayouts($data);
-
+    
         // Assert: Ensure the response has data for both sellers
         $this->assertArrayHasKey('Seller1', $result);
         $this->assertArrayHasKey('Seller2', $result);
     }
+    
+
 
     /** @test */
-    public function it_should_return_empty_response_when_no_items_are_provided()
-    {
-        // Arrange: Empty data
-        $data = collect([]);
+public function it_should_return_empty_response_when_no_items_are_provided()
+{
+    // Arrange: Empty data
+    $data = collect([]);
 
-        // Mock repository methods (no interactions expected)
-        $this->payoutRepository->shouldNotReceive('createPayout');
-        $this->transactionRepository->shouldNotReceive('createBatchTransactions');
-        $this->itemPayoutRepository->shouldNotReceive('saveMultipleItemPayouts');
+    // Mock repository methods (no interactions expected)
+    $this->payoutRepository->shouldNotReceive('createPayout');
+    $this->transactionRepository->shouldNotReceive('createBatchTransactions');
+    $this->itemTransactionRepository->shouldNotReceive('saveMultipleItemTransactions');
 
-        // Act: Call the method
-        $result = $this->payoutService->processPayouts($data);
+    // Act: Call the method
+    $result = $this->payoutService->processPayouts($data);
 
-        // Assert: Ensure the result is empty
-        $this->assertEmpty($result);
-    }
+    // Assert: Ensure the result is empty
+    $this->assertEmpty($result);
+
+    // Ensure no transactions or item transactions were attempted
+    $this->transactionRepository->shouldNotHaveReceived('createBatchTransactions');
+    $this->itemTransactionRepository->shouldNotHaveReceived('saveMultipleItemTransactions');
+}
+
 
     // Helper function to mock global functions like getPayoutLimit
     protected function mockFunction($functionName, $returnValue)

@@ -55,7 +55,6 @@ class PayoutControllerTest extends TestCase
                                         'Item Amount' => 101.73,
                                         'Item Unit Amount' => 101.73,
                                         'Item Currency' => 'USD',
-                                        'Item Code' => 'TF_D655',
                                         'Item Quantity' => 1,
                                     ],
                                     [
@@ -64,7 +63,6 @@ class PayoutControllerTest extends TestCase
                                         'Item Amount' => 477.83,
                                         'Item Unit Amount' => 477.83,
                                         'Item Currency' => 'USD',
-                                        'Item Code' => 'PR_D744',
                                         'Item Quantity' => 1,
                                     ]
                                 ]
@@ -83,7 +81,6 @@ class PayoutControllerTest extends TestCase
                                         'Item Amount' => 955.66,
                                         'Item Unit Amount' => 477.83,
                                         'Item Currency' => 'USD',
-                                        'Item Code' => 'PR_D744',
                                         'Item Quantity' => 2,
                                     ]
                                 ]

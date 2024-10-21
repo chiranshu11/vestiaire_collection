@@ -5,7 +5,7 @@ namespace App\Services;
 use App\Models\Seller;
 use App\Repositories\PayoutRepository;
 use App\Repositories\TransactionRepository;
-use App\Repositories\ItemPayoutRepository;
+use App\Repositories\ItemTransactionRepository;
 use Illuminate\Support\Collection;
 use App\Exceptions\PayoutException;
 use Illuminate\Support\Facades\DB;
@@ -14,16 +14,16 @@ class PayoutService
 {
     protected $payoutRepository;
     protected $transactionRepository;
-    protected $itemPayoutRepository;
+    protected $itemTransactionRepository;
 
     public function __construct(
         PayoutRepository $payoutRepository,
         TransactionRepository $transactionRepository,
-        ItemPayoutRepository $itemPayoutRepository
+        ItemTransactionRepository $itemTransactionRepository
     ) {
         $this->payoutRepository = $payoutRepository;
         $this->transactionRepository = $transactionRepository;
-        $this->itemPayoutRepository = $itemPayoutRepository;
+        $this->itemTransactionRepository = $itemTransactionRepository;
     }
 
     public function processPayouts(Collection $data): array
@@ -205,11 +205,15 @@ class PayoutService
             
             foreach ($payoutBatches['batch'] as $batch) {
 
+                $itemsInTransaction = [];
+                foreach (array_values($batch['items']) as $item) {
+                    array_push($itemsInTransaction,$item);
+                }
                 $transactionCollection->push([
                     'batch_amount_in_original_currency' => $batch['batch_amount_in_original_currency'],
                     'batch_amount_in_base_currency' => $batch['batch_amount_in_base_currency'],
+                    'items' => $itemsInTransaction
                 ]);
-                
 
                 $response->push([
                     'payout_id' => $consolidatedPayout->id,
@@ -221,9 +225,10 @@ class PayoutService
                     'items' => array_values($batch['items'])
                 ]);
             }
+            
 
-            $this->transactionRepository->createBatchTransactions($consolidatedPayout->id, $transactionCollection);
-            $this->itemPayoutRepository->saveMultipleItemPayouts($consolidatedPayout->id, $batch['items']);
+            $transactions = $this->transactionRepository->createBatchTransactions($consolidatedPayout->id, $transactionCollection);
+            $this->itemTransactionRepository->saveMultipleItemTransactions($transactions);
 
             DB::commit();
 
