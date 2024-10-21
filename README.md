@@ -18,19 +18,24 @@ The project follows best OOP practices and includes tests to validate various sc
 - **Event Dispatching**: Payout creation events are dispatched to enable any additional business logic (e.g., notifications).
 - **Service Layer**: Follows the Service Layer design pattern for better separation of concerns.
 
-## API Endpoints
 ### POST `/api/payouts`
-Create payouts for sellers by providing an array of items.
+Create payouts for sellers by providing an array of sold items.
 
 **Request Format**:
 ```json
 {
-  "items": [
+  "sold_items": [
     {
-      "name": "Item Name",
-      "price_amount": 500,
-      "price_currency": "USD",
-      "seller_reference": 1
+      "seller_reference": 1,
+      "channel_item_code": "Test_W739937"
+    },
+    {
+      "seller_reference": 1,
+      "channel_item_code": "Test_W739936"
+    },
+    {
+      "seller_reference": 1,
+      "channel_item_code": "Test_W7394"
     }
   ]
 }
@@ -40,54 +45,128 @@ Create payouts for sellers by providing an array of items.
 - **Success (201 Created)**:
   ```json
   {
-    "payouts": [
-      {
-        "seller_reference": "seller_1",
-        "amount": 500,
-        "currency": "USD"
+  "payouts": {
+    "Johnston-Funk": {
+      "U.S.A Payouts": [
+        {
+          "payout_id": 3,
+          "seller_reference": 1,
+          "original_amount": 985,
+          "converted_amount": 985,
+          "original_currency": "USD",
+          "converted_currency": "USD",
+          "items": [
+            {
+              "Item ID": 21,
+              "Item Channel Code": "Test_W7394",
+              "Item Name": "Test T4",
+              "Item Amount": 600,
+              "Item Unit Amount": 300,
+              "Item Currency": "USD",
+              "Item Quantity": 2
+            },
+            {
+              "Item ID": 23,
+              "Item Channel Code": "Test_W739937",
+              "Item Name": "Test T7",
+              "Item Amount": 385,
+              "Item Unit Amount": 55,
+              "Item Currency": "USD",
+              "Item Quantity": 7
+            }
+          ]
+        },
+        {
+          "payout_id": 3,
+          "seller_reference": 1,
+          "original_amount": 970,
+          "converted_amount": 970,
+          "original_currency": "USD",
+          "converted_currency": "USD",
+          "items": [
+            {
+              "Item ID": 22,
+              "Item Channel Code": "Test_W739936",
+              "Item Name": "Test T6",
+              "Item Amount": 915,
+              "Item Unit Amount": 915,
+              "Item Currency": "USD",
+              "Item Quantity": 1
+            },
+            {
+              "Item ID": 23,
+              "Item Channel Code": "Test_W739937",
+              "Item Name": "Test T7",
+              "Item Amount": 55,
+              "Item Unit Amount": 55,
+              "Item Currency": "USD",
+              "Item Quantity": 1
+            }
+          ]
+        },
+        {
+          "payout_id": 3,
+          "seller_reference": 1,
+          "original_amount": 165,
+          "converted_amount": 165,
+          "original_currency": "USD",
+          "converted_currency": "USD",
+          "items": [
+            {
+              "Item ID": 23,
+              "Item Channel Code": "Test_W739937",
+              "Item Name": "Test T7",
+              "Item Amount": 165,
+              "Item Unit Amount": 55,
+              "Item Currency": "USD",
+              "Item Quantity": 3
+            }
+          ]
+          }
+        ]  
       }
-    ]
+    }
   }
+
   ```
 - **Validation Error (422 Unprocessable Entity)**:
   ```json
   {
-    "errors": {
-      "items": [
-        "The items field is required."
-      ]
-    }
+  "errors": {
+    "sold_items": [
+      "The sold_items field is required."
+    ]
   }
+  }
+
   ```
 
 **Sample cURL Request**:
 ```bash
-curl --location 'http://vest.test/api/payouts' \
---header 'Content-Type: application/json' \
---data '{
-           "items": [
-               {
-                   "name": "Item 1",
-                   "price_amount": 20000,
-                   "price_currency": "USD",
-                   "seller_reference": 3
-               },
-               {
-                   "name": "Item 2",
-                   "price_amount": 200,
-                   "price_currency": "USD",
-                   "seller_reference": 3
-               }
-           ]
-         }'
+    curl --location 'http://vest.test/api/payouts' \
+      --header 'Content-Type: application/json' \
+      --data '{
+          "sold_items": [
+              {
+                  "seller_reference": 1,
+                  "channel_item_code": "Test_W739937"
+              },
+              {
+                  "seller_reference": 1,
+                  "channel_item_code": "Test_W739936"
+              },
+              {
+                  "seller_reference": 1,
+                  "channel_item_code": "Test_W7394"
+              }
+          ]
+      }'
 ```
 
 ## Validation Rules
-- `items`: Required, must be an array.
-- `items.*.name`: Required, must be a string, max length 255.
-- `items.*.price_amount`: Required, must be a numeric value, minimum value is 0.
-- `items.*.price_currency`: Required, must be one of `USD`, `EUR`, `GBP`.
-- `items.*.seller_reference`: Required, must be a string, max length 255.
+- `sold_items`: Required, must be an array.
+- `sold_items.*.seller_reference`: Required, must be an integer and exist in the sellers table.
+- `sold_items.*.channel_item_code`: Required, must be a string with a maximum length of 255 characters.
 
 ## Installation Instructions
 1. **Clone the Repository**: Clone the project from your version control system.
